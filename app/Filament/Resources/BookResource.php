@@ -6,6 +6,7 @@ use App\Filament\Resources\BookResource\Pages;
 use App\Filament\Resources\BookResource\RelationManagers;
 use App\Models\Book;
 use Filament\Forms;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -26,6 +27,9 @@ class BookResource extends Resource
                 Forms\Components\TextInput::make('name')
                 ->required()
                 ->maxLength(255),
+                Select::make('categories')
+                ->relationship('categories', 'name')
+                ->multiple(),
                 Forms\Components\DatePicker::make('date')
                 ->required(),
                 Forms\Components\TextInput::make('NameAutor')

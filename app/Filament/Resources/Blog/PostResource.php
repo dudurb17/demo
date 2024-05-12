@@ -5,7 +5,8 @@ namespace App\Filament\Resources\Blog;
 use App\Filament\Resources\Blog\PostResource\Pages;
 use App\Models\Blog\Post;
 use Filament\Forms;
-use Filament\Forms\Components\SpatieTagsInput;
+use Filament\Forms\Components\Actions\Action;
+use Filament\Forms\Components\Wizard;
 use Filament\Forms\Form;
 use Filament\Infolists\Components;
 use Filament\Infolists\Infolist;
@@ -18,6 +19,8 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 
 class PostResource extends Resource
@@ -25,7 +28,7 @@ class PostResource extends Resource
     protected static ?string $model = Post::class;
 
     protected static ?string $slug = 'blog/posts';
-
+    public ?array $data = [];
     protected static ?string $recordTitleAttribute = 'title';
 
     protected static ?string $navigationGroup = 'Blog';
@@ -40,49 +43,57 @@ class PostResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Section::make()
-                    ->schema([
-                        Forms\Components\TextInput::make('title')
-                            ->required()
-                            ->live(onBlur: true)
-                            ->maxLength(255)
-                            ->afterStateUpdated(fn (string $operation, $state, Forms\Set $set) => $operation === 'create' ? $set('slug', Str::slug($state)) : null),
+                Wizard::make([
+                    Wizard\Step::make('Order')
+                        ->schema([
+                            Forms\Components\TextInput::make('title')
+                                ->required()
+                                ->live(onBlur: true)
+                                ->maxLength(255)
+                                ->afterStateUpdated(fn(string $operation, $state, Forms\Set $set) => $operation === 'create' ? $set('slug', Str::slug($state)) : null),
 
-                        Forms\Components\TextInput::make('slug')
-                            ->disabled()
-                            ->dehydrated()
-                            ->required()
-                            ->maxLength(255)
-                            ->unique(Post::class, 'slug', ignoreRecord: true),
+                            Forms\Components\TextInput::make('slug')
+                                ->disabled()
+                                ->dehydrated()
+                                ->required()
+                                ->maxLength(255)
+                                ->unique(Post::class, 'slug', ignoreRecord: true),
 
-                        Forms\Components\MarkdownEditor::make('content')
-                            ->required()
-                            ->columnSpan('full'),
+                        ]),
+                    Wizard\Step::make('Delivery')
+                        ->schema([
 
-                        Forms\Components\Select::make('blog_author_id')
-                            ->relationship('author', 'name')
-                            ->searchable()
-                            ->required(),
+                            Forms\Components\MarkdownEditor::make('content')
+                                ->required()
+                                ->columnSpan('full'),
+                            Forms\Components\DatePicker::make('published_at')
+                                ->label('Published Date'),
 
-                        Forms\Components\Select::make('blog_category_id')
-                            ->relationship('category', 'name')
-                            ->searchable()
-                            ->required(),
+                            Forms\Components\FileUpload::make('image')
+                                ->image()
+                                ->hiddenLabel(),
+                        ]),
+                    Wizard\Step::make('Billing')
+                        ->schema([
+                            Forms\Components\Select::make('blog_author_id')
+                                ->relationship('author', 'name')
+                                ->searchable()
+                                ->required(),
+                            Forms\Components\Select::make('blog_category_id')
+                                ->relationship('category', 'name')
+                                ->searchable()
+                                ->required(),
 
-                        Forms\Components\DatePicker::make('published_at')
-                            ->label('Published Date'),
+                        ]),
 
-                        SpatieTagsInput::make('tags'),
-                    ])
-                    ->columns(2),
-
-                Forms\Components\Section::make('Image')
-                    ->schema([
-                        Forms\Components\FileUpload::make('image')
-                            ->image()
-                            ->hiddenLabel(),
-                    ])
-                    ->collapsible(),
+                ])->submitAction(new HtmlString(Blade::render(<<<BLADE
+                <x-filament::button
+                    type="submit"
+                    size="sm"
+                >
+                    Criar
+                </x-filament::button>
+            BLADE))),
             ]);
     }
 
@@ -93,15 +104,6 @@ class PostResource extends Resource
                 Tables\Columns\ImageColumn::make('image')
                     ->label('Image'),
 
-                Tables\Columns\TextColumn::make('title')
-                    ->searchable()
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('slug')
-                    ->searchable()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
                 Tables\Columns\TextColumn::make('author.name')
                     ->searchable()
                     ->sortable()
@@ -109,7 +111,7 @@ class PostResource extends Resource
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->getStateUsing(fn (Post $record): string => $record->published_at?->isPast() ? 'Published' : 'Draft')
+                    ->getStateUsing(fn(Post $record): string => $record->published_at?->isPast() ? 'Published' : 'Draft')
                     ->colors([
                         'success' => 'Published',
                     ]),
@@ -133,19 +135,19 @@ class PostResource extends Resource
                 Tables\Filters\Filter::make('published_at')
                     ->form([
                         Forms\Components\DatePicker::make('published_from')
-                            ->placeholder(fn ($state): string => 'Dec 18, ' . now()->subYear()->format('Y')),
+                            ->placeholder(fn($state): string => 'Dec 18, ' . now()->subYear()->format('Y')),
                         Forms\Components\DatePicker::make('published_until')
-                            ->placeholder(fn ($state): string => now()->format('M d, Y')),
+                            ->placeholder(fn($state): string => now()->format('M d, Y')),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
                             ->when(
                                 $data['published_from'] ?? null,
-                                fn (Builder $query, $date): Builder => $query->whereDate('published_at', '>=', $date),
+                                fn(Builder $query, $date): Builder => $query->whereDate('published_at', '>=', $date),
                             )
                             ->when(
                                 $data['published_until'] ?? null,
-                                fn (Builder $query, $date): Builder => $query->whereDate('published_at', '<=', $date),
+                                fn(Builder $query, $date): Builder => $query->whereDate('published_at', '<=', $date),
                             );
                     })
                     ->indicateUsing(function (array $data): array {
